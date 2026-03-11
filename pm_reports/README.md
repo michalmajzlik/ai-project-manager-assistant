@@ -1,13 +1,14 @@
-# PM Reports Engine (v1)
+﻿# PM Reports Engine (v1)
 
 Uses `REPORT_CONTRACT.md` as source-of-truth for report structure and logic.
 
 ## Setup (once per machine/user)
 
-1. Configure Jira secret:
+1. Configure Jira context and secret:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1 -BaseUrl '<your-jira-base-url>' -Email '<your-email>'
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_context.ps1 -BaseUrl 'https://your-domain.atlassian.net' -Email 'your.name@company.com'
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1
 ```
 
 2. Configure project context (variables used by report runner):
@@ -26,6 +27,7 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType
 ```
 
 The script loads from:
+- Jira context: `%APPDATA%\SensoneoAI\jira_context.json`
 - Jira credentials: `%APPDATA%\SensoneoAI\jira_secret.xml`
 - Project context: `%APPDATA%\SensoneoAI\project_report_config.json`
 

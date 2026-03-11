@@ -3,9 +3,9 @@
 ## 1) Scope and Data Sources
 
 ### In scope reports
-1. Daily Client Standup (RetuRO) - structured text
-2. Weekly Project Status (internal Sensoneo management) - structured text
-3. Steering Committee Pack (client + Sensoneo senior management) - presentation
+1. Daily Client Standup - structured text
+2. Weekly Project Status (internal management) - structured text
+3. Steering Committee Pack (client + internal senior management) - presentation
 
 ### Primary data sources
 1. Jira (project, issues, releases, statuses, assignees, estimates, spent, chargeable)
@@ -52,7 +52,7 @@
 
 ## 3) Report Definitions
 
-## 3.1 Daily Client Standup (RetuRO)
+## 3.1 Daily Client Standup
 
 ### Audience
 - Client-side delivery stakeholders
@@ -76,7 +76,7 @@
 ## 3.2 Weekly Project Status (Internal)
 
 ### Audience
-- Internal Sensoneo management
+- Internal management
 
 ### Purpose
 - Delivery control, internal risks, capacity, client friction, billing quality
@@ -99,7 +99,7 @@
 ## 3.3 Steering Committee Pack
 
 ### Audience
-- Senior management (both client and Sensoneo)
+- Senior management (client + internal)
 
 ### Purpose
 - Strategic alignment and decision support

@@ -86,7 +86,7 @@ def _jira_auth_header() -> Dict[str, str]:
 def _jira_base_url() -> str:
     base = os.getenv("JIRA_BASE_URL", "").strip()
     if not base:
-        base = "https://sensoneosk.atlassian.net"
+        raise RuntimeError("Missing Jira base URL. Set JIRA_BASE_URL.")
     return base.rstrip("/")
 
 
@@ -263,7 +263,7 @@ TOOLS = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "issue_key": {"type": "string", "description": "Issue key (e.g. RET-444)."},
+                "issue_key": {"type": "string", "description": "Issue key (e.g. PROJ-123)."},
                 "include_comments": {
                     "type": "boolean",
                     "description": "Include comments.",
@@ -355,4 +355,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
 

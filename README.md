@@ -1,4 +1,4 @@
-# ai-pm-assistant
+﻿# ai-pm-assistant
 AI toolkit for IT Project Managers that creates a personal project intelligence assistant.
 
 It aggregates data from Jira, meetings, emails, and calendars to automate reporting, generate summaries, prepare management presentations, and track project progress.
@@ -18,11 +18,13 @@ This script:
 ## Jira Setup (required for live Jira features)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1 -BaseUrl '<your-jira-base-url>' -Email '<your-email>'
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_context.ps1 -BaseUrl 'https://your-domain.atlassian.net' -Email 'your.name@company.com'
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1
 powershell -ExecutionPolicy Bypass -File .\jira_mcp\install_tasks.ps1 -RunNow
 ```
 
 Notes:
+- Jira context (non-secret) is stored per Windows user in `%APPDATA%\SensoneoAI\jira_context.json`.
 - Jira secret is stored per Windows user in `%APPDATA%\SensoneoAI\jira_secret.xml`.
 - Scheduled tasks are local OS objects, so they must be installed on each machine.
 

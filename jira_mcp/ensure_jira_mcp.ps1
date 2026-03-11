@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$EnvFile,
     [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml",
     [string]$PythonExe,
@@ -16,9 +16,7 @@ function Resolve-Python {
     $candidates = @(
         "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
         "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
-        "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
-        "C:\Users\Michal\AppData\Local\Python\pythoncore-3.14-64\python.exe"
-    )
+        "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe")
 
     foreach ($c in $candidates) {
         if (Test-Path $c) { return $c }
@@ -114,3 +112,5 @@ if ($null -ne $started) {
 
 Write-HeartbeatLog "ERROR failed to start process"
 exit 1
+
+

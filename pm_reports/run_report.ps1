@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('daily','weekly','steering')]
     [string]$ReportType,
@@ -18,9 +18,7 @@ function Resolve-Python {
     $candidates = @(
         "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe",
         "$env:LOCALAPPDATA\Programs\Python\Python311\python.exe",
-        "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe",
-        "C:\Users\Michal\AppData\Local\Python\pythoncore-3.14-64\python.exe"
-    )
+        "$env:LOCALAPPDATA\Programs\Python\Python310\python.exe")
 
     foreach ($c in $candidates) {
         if (Test-Path $c) { return $c }
@@ -64,3 +62,5 @@ if (-not $python) {
 
 & $python (Join-Path $root 'report_builder.py') --report-type $ReportType --project $Project --project-key $ProjectKey --live-jira --output $OutputPath
 Write-Host "Generated: $OutputPath"
+
+

@@ -1,4 +1,4 @@
-# Python
+﻿# Python
 __pycache__/
 *.py[cod]
 *$py.class
@@ -48,5 +48,8 @@ Meetings/VTT_test/
 Meetings/processor.log
 
 # Local/generated outputs
-outputs/*_smoketest.md
-outputs/*_live_try.md
+outputs/*
+!outputs/.gitkeep
+!outputs/example_daily_report.md
+!outputs/example_daily_client_standup.md
+!outputs/example_weekly_project_status.md

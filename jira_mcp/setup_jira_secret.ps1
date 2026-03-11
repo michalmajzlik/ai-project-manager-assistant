@@ -1,9 +1,22 @@
 ﻿param(
-    [string]$BaseUrl = "https://sensoneosk.atlassian.net",
-    [string]$Email = "michal.majzlik@sensoneo.com",
+    [string]$BaseUrl,
+    [string]$Email,
     [switch]$UseBearer,
-    [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml"
+    [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml",
+    [string]$ConfigFile = "$env:APPDATA\SensoneoAI\jira_context.json"
 )
+
+$ErrorActionPreference = 'Stop'
+
+if ((-not $BaseUrl -or -not $Email) -and (Test-Path $ConfigFile)) {
+    $cfg = Get-Content $ConfigFile -Raw | ConvertFrom-Json
+    if (-not $BaseUrl -and $cfg.BaseUrl) { $BaseUrl = [string]$cfg.BaseUrl }
+    if (-not $Email -and $cfg.Email) { $Email = [string]$cfg.Email }
+}
+
+if (-not $BaseUrl -or -not $Email) {
+    throw "Missing BaseUrl/Email. Run setup_jira_context.ps1 first or pass -BaseUrl and -Email."
+}
 
 $dir = Split-Path -Parent $SecretFile
 if (-not (Test-Path $dir)) {
@@ -51,4 +64,4 @@ if ($UseBearer) {
 }
 
 Write-Host "Saved encrypted Jira credentials to: $SecretFile"
-Write-Host "Next run: powershell -ExecutionPolicy Bypass -File 'C:\Sensoneo AI\jira_mcp\run_jira_mcp.ps1'"
+Write-Host "Next run: powershell -ExecutionPolicy Bypass -File '.\\jira_mcp\\run_jira_mcp.ps1'"

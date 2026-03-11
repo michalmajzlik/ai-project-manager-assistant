@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$PythonExe,
     [switch]$SkipPythonInstall,
     [switch]$SkipPipInstall
@@ -79,8 +79,9 @@ foreach ($dir in $dirsToEnsure) {
 Write-Host ''
 Write-Host 'Local bootstrap completed.'
 Write-Host 'Next steps:'
-Write-Host "1) Jira secret: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\setup_jira_secret.ps1' -BaseUrl '<your-jira-base-url>' -Email '<your-email>'"
-Write-Host "2) Jira MCP autostart: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\install_tasks.ps1' -RunNow"
-Write-Host "3) Project context: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\setup_project_context.ps1' -Project '<project-name>' -ProjectKey '<project-key>'"
-Write-Host "4) Daily report: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\run_report.ps1' -ReportType daily"
-Write-Host "5) Meetings (optional): setx OPENAI_API_KEY '<your-key>'"
+Write-Host "1) Jira context: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\setup_jira_context.ps1' -BaseUrl 'https://your-domain.atlassian.net' -Email 'your.name@company.com'"
+Write-Host "2) Jira secret: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\setup_jira_secret.ps1'"
+Write-Host "3) Jira MCP autostart: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\install_tasks.ps1' -RunNow"
+Write-Host "4) Project context: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\setup_project_context.ps1' -Project '<project-name>' -ProjectKey '<project-key>'"
+Write-Host "5) Daily report: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\run_report.ps1' -ReportType daily"
+Write-Host "6) Meetings (optional): setx OPENAI_API_KEY '<your-key>'"
