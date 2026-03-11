@@ -2,28 +2,43 @@
 
 Uses `REPORT_CONTRACT.md` as source-of-truth for report structure and logic.
 
+## Setup (once per machine/user)
+
+1. Configure Jira secret:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1 -BaseUrl '<your-jira-base-url>' -Email '<your-email>'
+```
+
+2. Configure project context (variables used by report runner):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+```
+
 ## Fastest usage (live Jira)
 
 Run from repository root:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType daily -Project RetuRO -ProjectKey RET
-powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly -Project RetuRO -ProjectKey RET
+powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType daily
+powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly
 ```
 
-The script loads Jira credentials from:
-- `%APPDATA%\SensoneoAI\jira_secret.xml`
+The script loads from:
+- Jira credentials: `%APPDATA%\SensoneoAI\jira_secret.xml`
+- Project context: `%APPDATA%\SensoneoAI\project_report_config.json`
 
 ## Direct CLI usage
 
 ```powershell
-& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project RetuRO --project-key RET --live-jira --output '.\outputs\daily_report.md'
+& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project '<project-name>' --project-key '<project-key>' --live-jira --output '.\outputs\daily_report.md'
 ```
 
 ## JSON input mode (offline/test)
 
 ```powershell
-& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project RetuRO --jira '.\pm_reports\sample_jira.json' --output '.\outputs\daily_report.md'
+& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project '<project-name>' --jira '.\pm_reports\sample_jira.json' --output '.\outputs\daily_report.md'
 ```
 
 ## Notes

@@ -79,7 +79,8 @@ foreach ($dir in $dirsToEnsure) {
 Write-Host ''
 Write-Host 'Local bootstrap completed.'
 Write-Host 'Next steps:'
-Write-Host "1) Jira secret: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\setup_jira_secret.ps1' -BaseUrl 'https://sensoneosk.atlassian.net' -Email '<your-email>'"
+Write-Host "1) Jira secret: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\setup_jira_secret.ps1' -BaseUrl '<your-jira-base-url>' -Email '<your-email>'"
 Write-Host "2) Jira MCP autostart: powershell -ExecutionPolicy Bypass -File '$repoRoot\jira_mcp\install_tasks.ps1' -RunNow"
-Write-Host "3) Daily report: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\run_report.ps1' -ReportType daily -Project RetuRO -ProjectKey RET"
-Write-Host "4) Meetings (optional): setx OPENAI_API_KEY '<your-key>'"
+Write-Host "3) Project context: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\setup_project_context.ps1' -Project '<project-name>' -ProjectKey '<project-key>'"
+Write-Host "4) Daily report: powershell -ExecutionPolicy Bypass -File '$repoRoot\pm_reports\run_report.ps1' -ReportType daily"
+Write-Host "5) Meetings (optional): setx OPENAI_API_KEY '<your-key>'"

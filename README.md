@@ -18,7 +18,7 @@ This script:
 ## Jira Setup (required for live Jira features)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1 -BaseUrl 'https://sensoneosk.atlassian.net' -Email '<your-email>'
+powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1 -BaseUrl '<your-jira-base-url>' -Email '<your-email>'
 powershell -ExecutionPolicy Bypass -File .\jira_mcp\install_tasks.ps1 -RunNow
 ```
 
@@ -26,18 +26,27 @@ Notes:
 - Jira secret is stored per Windows user in `%APPDATA%\SensoneoAI\jira_secret.xml`.
 - Scheduled tasks are local OS objects, so they must be installed on each machine.
 
+## Project Context Setup (required for reports)
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+```
+
+This saves local report context to:
+- `%APPDATA%\SensoneoAI\project_report_config.json`
+
 ## Main Usage
 
 Generate daily report:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType daily -Project RetuRO -ProjectKey RET
+powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType daily
 ```
 
 Generate weekly report:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly -Project RetuRO -ProjectKey RET
+powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly
 ```
 
 Process meeting transcripts (optional):
@@ -50,6 +59,11 @@ setx OPENAI_API_KEY '<your-key>'
 
 ## Troubleshooting
 - If `-File .\jira_mcp\...` says file not found, first run `cd <repo-root>`.
+- If report run fails with missing project context, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+```
 - If Python is not found, rerun bootstrap with explicit path:
 
 ```powershell

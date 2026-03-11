@@ -3,10 +3,11 @@ param(
     [ValidateSet('daily','weekly','steering')]
     [string]$ReportType,
 
-    [string]$Project = 'RetuRO',
-    [string]$ProjectKey = 'RET',
+    [string]$Project,
+    [string]$ProjectKey,
     [string]$OutputPath,
-    [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml"
+    [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml",
+    [string]$ProjectConfigFile = "$env:APPDATA\SensoneoAI\project_report_config.json"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,6 +30,16 @@ function Resolve-Python {
     if ($cmd -and $cmd.Source -and (Test-Path $cmd.Source)) { return $cmd.Source }
 
     return $null
+}
+
+if ((-not $Project -or -not $ProjectKey) -and (Test-Path $ProjectConfigFile)) {
+    $cfg = Get-Content $ProjectConfigFile -Raw | ConvertFrom-Json
+    if (-not $Project -and $cfg.Project) { $Project = [string]$cfg.Project }
+    if (-not $ProjectKey -and $cfg.ProjectKey) { $ProjectKey = [string]$cfg.ProjectKey }
+}
+
+if (-not $Project -or -not $ProjectKey) {
+    throw "Missing project context. Run .\pm_reports\setup_project_context.ps1 or pass -Project and -ProjectKey."
 }
 
 if (-not $OutputPath) {

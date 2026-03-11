@@ -8,10 +8,16 @@ import json
 import os
 import urllib.parse
 import urllib.request
-from collections import Counter, defaultdict
+from collections import Counter
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+
+WEEKLY_EPIC_CLOSED_CAPACITY_JQL = (
+    'project = {project_key} and issuetype = Epic and status = Closed '
+    'and status CHANGED TO Closed AFTER -90d ORDER BY updated DESC'
+)
+
 
 
 def load_json(path: Path | None) -> dict[str, Any]:
@@ -120,6 +126,7 @@ def fetch_issues(base_url: str, auth_header: str, jql: str, field_ids: dict[str,
         "timespent",
         "timeestimate",
         "timeoriginalestimate",
+        "resolutiondate",
     ]
     for v in field_ids.values():
         if v and v not in selected:
@@ -141,6 +148,7 @@ def fetch_issues(base_url: str, auth_header: str, jql: str, field_ids: dict[str,
         f = item.get("fields", {})
         assignee = f.get("assignee") or {}
         status = f.get("status") or {}
+        issue_type = f.get("issuetype") or {}
 
         raw_chargeable = f.get(field_ids.get("chargeable", ""), False) if field_ids.get("chargeable") else False
         raw_actual_spent = f.get(field_ids.get("actual_spent", "")) if field_ids.get("actual_spent") else None
@@ -165,6 +173,8 @@ def fetch_issues(base_url: str, auth_header: str, jql: str, field_ids: dict[str,
                 "assignee": assignee.get("displayName"),
                 "created": f.get("created"),
                 "updated": f.get("updated"),
+                "resolutiondate": f.get("resolutiondate"),
+                "issue_type": issue_type.get("name"),
                 "chargeable": as_bool(raw_chargeable),
                 "actual_spent": actual_spent,
                 "planned_md": planned_md,
@@ -220,21 +230,40 @@ def billing_snapshot(issues: list[dict[str, Any]]) -> str:
 
 
 def capacity_snapshot(issues: list[dict[str, Any]]) -> str:
-    planned = sum(as_float(i.get("planned_md")) for i in issues)
-    consumed = sum(as_float(i.get("consumed_md")) for i in issues)
-    remaining = planned - consumed
+    if not issues:
+        return "No closed Epics found in the last 3 months for capacity tracking."
 
-    by_assignee: dict[str, float] = defaultdict(float)
+    planned_total = sum(as_float(i.get("planned_md")) for i in issues)
+    consumed_total = sum(as_float(i.get("consumed_md")) for i in issues)
+    burn_total = (consumed_total / planned_total * 100.0) if planned_total > 0 else 0.0
+
+    missing_planned = [i.get("key", "?") for i in issues if as_float(i.get("planned_md")) <= 0]
+    missing_consumed = [i.get("key", "?") for i in issues if as_float(i.get("consumed_md")) <= 0]
+
+    rows = [
+        "| Epic | Ticket name | Status | Refined Estimation MDs (Planned) | Time Spent MDs (Consumed) | Burn % |",
+        "| --- | --- | --- | ---: | ---: | ---: |",
+    ]
+
     for i in issues:
-        by_assignee[i.get("assignee") or "Unassigned"] += as_float(i.get("planned_md"))
-    top = sorted(by_assignee.items(), key=lambda x: x[1], reverse=True)[:5]
-    top_text = ", ".join(f"{k}: {v:.2f} MD" for k, v in top) if top else "None"
+        planned = as_float(i.get("planned_md"))
+        consumed = as_float(i.get("consumed_md"))
+        burn = (consumed / planned * 100.0) if planned > 0 else 0.0
+        rows.append(
+            f"| {i.get('key', '?')} | {i.get('summary', 'Unknown')} | {i.get('status', 'Unknown')} | {planned:.2f} | {consumed:.2f} | {burn:.1f}% |"
+        )
 
-    return (
-        f"Planned MD: {planned:.2f}. Consumed MD: {consumed:.2f}. Remaining MD: {remaining:.2f}. "
-        f"Top planned load: {top_text}."
-    )
+    summary = [
+        "(Inference) Scope: Epic issues (issuetype = Epic) in status Closed and status changed to Closed in the last 90 days.",
+        f"Summary: Planned MD = {planned_total:.2f}, Consumed MD = {consumed_total:.2f}, Burn = {burn_total:.1f}%.",
+    ]
 
+    if missing_planned:
+        summary.append(f"Data quality: Missing/zero Refined Estimation MDs on {len(missing_planned)} epics ({', '.join(missing_planned[:8])}).")
+    if missing_consumed:
+        summary.append(f"Data quality: Missing/zero Time Spent MDs on {len(missing_consumed)} epics ({', '.join(missing_consumed[:8])}).")
+
+    return "\n".join(summary + ["", *rows])
 
 def data_quality_issues(issues: list[dict[str, Any]]) -> str:
     missing_assignee = [i.get("key", "?") for i in issues if not i.get("assignee")]
@@ -253,7 +282,7 @@ def section(title: str, body: str) -> str:
     return f"## {title}\n{body.strip()}\n"
 
 
-def build_report(report_type: str, project_label: str, issues: list[dict[str, Any]], releases: list[dict[str, Any]], meetings: dict[str, Any], calendar: dict[str, Any], emails: dict[str, Any], contract_path: Path) -> str:
+def build_report(report_type: str, project_label: str, issues: list[dict[str, Any]], releases: list[dict[str, Any]], meetings: dict[str, Any], calendar: dict[str, Any], emails: dict[str, Any], contract_path: Path, epic_capacity_issues: list[dict[str, Any]] | None = None) -> str:
     rag = infer_rag(issues)
     now = date.today().isoformat()
 
@@ -312,7 +341,8 @@ def build_report(report_type: str, project_label: str, issues: list[dict[str, An
         deps = "\n".join(stale_lines[:10]) if stale_lines else "- No stale open issues >= 7 days in scope."
         parts.append(section("Internal issues and dependencies", deps))
 
-        parts.append(section("Capacity and workload (MD)", capacity_snapshot(issues)))
+        capacity_scope = epic_capacity_issues if epic_capacity_issues is not None else []
+        parts.append(section("Capacity and workload (MD)", capacity_snapshot(capacity_scope)))
 
         client_items = [i for i in issues if "client" in str(i.get("summary", "")).lower()]
         client_text = "\n".join(f"- {i.get('key')}: {i.get('summary')}" for i in client_items[:8]) if client_items else "- No explicit client-tagged issues detected by summary keyword heuristic."
@@ -360,14 +390,22 @@ def live_jira_dataset(report_type: str, project_key: str) -> dict[str, Any]:
 
     issues = fetch_issues(base_url, auth_header, jql, field_ids, limit=250)
     releases = fetch_releases(base_url, auth_header, project_key)
-    return {"issues": issues, "releases": releases}
 
+    epic_capacity_issues: list[dict[str, Any]] = []
+    if report_type == "weekly":
+        epic_jql = (
+            f"project = {project_key} AND issuetype = Epic AND status = Closed "
+            "AND status CHANGED TO Closed AFTER -90d ORDER BY updated DESC"
+        )
+        epic_capacity_issues = fetch_issues(base_url, auth_header, epic_jql, field_ids, limit=250)
+
+    return {"issues": issues, "releases": releases, "epic_capacity_issues": epic_capacity_issues}
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate PM report drafts aligned to REPORT_CONTRACT.md")
     parser.add_argument("--report-type", choices=["daily", "weekly", "steering"], required=True)
-    parser.add_argument("--project", default="RetuRO")
-    parser.add_argument("--project-key", default="RET")
+    parser.add_argument("--project", default="<project-name>")
+    parser.add_argument("--project-key", default="<project-key>")
     parser.add_argument("--live-jira", action="store_true")
     parser.add_argument("--jira", type=Path)
     parser.add_argument("--meetings", type=Path)
@@ -391,6 +429,7 @@ def main() -> int:
 
     issues = jira.get("issues", []) if isinstance(jira.get("issues"), list) else []
     releases = jira.get("releases", []) if isinstance(jira.get("releases"), list) else []
+    epic_capacity_issues = jira.get("epic_capacity_issues", []) if isinstance(jira.get("epic_capacity_issues"), list) else []
 
     report = build_report(
         report_type=args.report_type,
@@ -401,6 +440,7 @@ def main() -> int:
         calendar=calendar,
         emails=emails,
         contract_path=args.contract,
+        epic_capacity_issues=epic_capacity_issues,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -411,3 +451,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
