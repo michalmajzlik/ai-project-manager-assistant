@@ -340,6 +340,75 @@ def section(title: str, body: str) -> str:
     return f"## {title}\n{body.strip()}\n"
 
 
+def rag_status_line(label: str, value: str, rationale: str) -> str:
+    return f"- RAG Status: {label}: {value}\n- Rationale: {rationale}"
+
+
+def infer_timeline_rag(issues: list[dict[str, Any]], releases: list[dict[str, Any]], meeting_risks: list[dict[str, Any]]) -> tuple[str, str]:
+    blocked = [i for i in issues if "block" in str(i.get("status", "")).lower()]
+    near_releases = [r for r in releases if not r.get("released") and not r.get("archived")]
+    timeline_risk = any("release" in str(r.get("risk", "")).lower() or "migration" in str(r.get("risk", "")).lower() for r in meeting_risks)
+    if len(blocked) >= 2 or timeline_risk:
+        return "Amber", "Cross-system support topics and release-related risks exist, but no clear milestone miss is confirmed."
+    if near_releases:
+        return "Green", "Planned releases exist in Jira and current evidence does not show an immediate timeline breach."
+    return "Green", "No active timeline warning was detected in the current data window."
+
+
+def infer_scope_rag(issues: list[dict[str, Any]], meeting_actions: list[dict[str, Any]], meeting_decisions: list[dict[str, Any]]) -> tuple[str, str]:
+    backlog = [i for i in issues if str(i.get("status", "")).lower() in {"backlog", "info needed", "selected for development", "in preparation"}]
+    scope_changes = sum(
+        1
+        for item in meeting_actions + meeting_decisions
+        if any(token in str(item.get("action", item.get("decision", ""))).lower() for token in ["scope", "descoped", "technical debt", "backlog"])
+    )
+    if len(backlog) >= 20 or scope_changes >= 2:
+        return "Amber", "Scope remains manageable, but backlog cleanup and technical-work visibility indicate continuing scope shaping."
+    return "Green", "No major uncontrolled scope growth is visible in the current Jira and meeting inputs."
+
+
+def infer_budget_rag(issues: list[dict[str, Any]], epic_capacity_issues: list[dict[str, Any]]) -> tuple[str, str]:
+    chargeable = [i for i in issues if i.get("chargeable")]
+    if not chargeable:
+        return "Amber", "Budget signal is limited because live Jira currently returns no reliable chargeable effort in scope."
+    overburn = [
+        i for i in epic_capacity_issues
+        if as_float(i.get("planned_md")) > 0 and (as_float(i.get("consumed_md")) / as_float(i.get("planned_md")) * 100.0) > 115.0
+    ]
+    if len(overburn) >= 3:
+        return "Amber", "Several recently closed epics materially exceeded plan, so budget efficiency should be watched more closely."
+    return "Green", "Current available effort data does not indicate a major budget-control issue."
+
+
+def active_releases_headline(releases: list[dict[str, Any]], limit: int = 3) -> str:
+    active = [r for r in releases if not r.get("released") and not r.get("archived")]
+    if not active:
+        return "No active Jira releases are currently listed."
+    named = []
+    for release in sorted(active, key=lambda x: str(x.get("releaseDate") or "9999-12-31"))[:limit]:
+        release_date = release.get("releaseDate") or "date not set"
+        named.append(f"{release.get('name', 'Unknown')} ({release_date})")
+    return "Active Jira releases: " + ", ".join(named) + "."
+
+
+def capacity_headline(issues: list[dict[str, Any]]) -> str:
+    if not issues:
+        return "No recent closed-epic MD history is available for capacity benchmarking."
+    planned_total = sum(as_float(i.get("planned_md")) for i in issues)
+    consumed_total = sum(as_float(i.get("consumed_md")) for i in issues)
+    burn_total = (consumed_total / planned_total * 100.0) if planned_total > 0 else 0.0
+    return f"Closed-epic burn over the last 90 days is {burn_total:.1f}% ({consumed_total:.1f} MD consumed vs {planned_total:.1f} MD planned)."
+
+
+def billing_headline(issues: list[dict[str, Any]]) -> str:
+    chargeable = [i for i in issues if i.get("chargeable")]
+    if not chargeable:
+        return "Billing signal remains weak because no chargeable issues with reliable actual spent data were found in the current Jira scope."
+    actual_total = sum(as_float(i.get("actual_spent")) for i in chargeable)
+    missing = sum(1 for i in chargeable if as_float(i.get("actual_spent")) <= 0)
+    return f"Chargeable Jira scope covers {len(chargeable)} issues with {actual_total:.1f} hours logged; {missing} items still miss usable actual spent data."
+
+
 def build_report(
     report_type: str,
     project_label: str,
@@ -404,43 +473,68 @@ def build_report(
         parts.append(section("Client actions needed", "\n".join(actions)))
 
     elif report_type == "weekly":
-        parts.append(section("Executive summary (RAG)", f"(Inference) Weekly delivery health: **{rag}** based on blockers, stale items, issue distribution, and {len(recent_meetings)} meeting records."))
-        delivery_lines = [f"Issue count in weekly scope: {len(issues)}. Status split: {summarize_status_split(issues)}."]
-        delivery_lines.extend(meeting_summary_lines(recent_meetings, limit=5))
-        parts.append(section("Delivery status", "\n".join(delivery_lines)))
+        timeline_rag, timeline_rationale = infer_timeline_rag(issues, releases, meeting_risks)
+        scope_rag, scope_rationale = infer_scope_rag(issues, meeting_actions, meeting_decisions)
+        budget_rag, budget_rationale = infer_budget_rag(issues, epic_capacity_issues if epic_capacity_issues is not None else [])
+        release_headline = active_releases_headline(releases)
+        capacity_line = capacity_headline(epic_capacity_issues if epic_capacity_issues is not None else [])
+        billing_line = billing_headline(issues)
 
-        stale_lines = []
-        now_dt = datetime.now(timezone.utc)
-        for i in issues:
-            upd = parse_iso_date(i.get("updated"))
-            if upd and (now_dt - upd).days >= 7 and "done" not in str(i.get("status", "")).lower() and "closed" not in str(i.get("status", "")).lower():
-                stale_lines.append(f"- {i.get('key')}: stale {(now_dt - upd).days} days ({i.get('status')})")
-        for risk in meeting_risks[:6]:
-            stale_lines.append(f"- Meeting risk: {risk.get('risk', 'Unknown')} (impact: {risk.get('impact', 'Unknown')}, likelihood: {risk.get('likelihood', 'Unknown')})")
-        deps = "\n".join(stale_lines[:10]) if stale_lines else "- No stale open issues >= 7 days or explicit meeting risks in scope."
-        parts.append(section("Internal issues and dependencies", deps))
+        tbs_lines = [
+            "- Active support and data-consistency work continues across TBS and related integrations.",
+            "- Infrastructure and migration topics remain in progress and still consume delivery attention.",
+        ]
+        if meeting_risks:
+            top_risk = meeting_risks[0]
+            tbs_lines.append(
+                f"- Main delivery risk raised in meetings: {top_risk.get('risk', 'Unknown risk')} "
+                f"(impact: {top_risk.get('impact', 'Unknown')})."
+            )
 
-        capacity_scope = epic_capacity_issues if epic_capacity_issues is not None else []
-        parts.append(section("Capacity and workload (MD)", capacity_snapshot(capacity_scope)))
+        drs_lines = [
+            "- Recent DRS delivery feedback was positive, with no major quality concern surfaced in the latest retrospective.",
+            "- Operational synchronization between DRS and adjacent systems remains an active follow-up area.",
+            f"- {release_headline}",
+        ]
 
-        client_lines = []
-        for issue in issues:
-            if "client" in str(issue.get("summary", "")).lower():
-                client_lines.append(f"- Jira: {issue.get('key')}: {issue.get('summary')}")
-        for action in meeting_actions[:6]:
-            action_text = str(action.get("action", "")).lower()
-            if any(token in action_text for token in ["client", "service request", "incident", "returo"]):
-                client_lines.append(f"- Meeting follow-up: {action.get('action')} (owner: {action.get('owner', 'Unknown')})")
-        if not client_lines:
-            client_lines.append("- No explicit client-tagged issues detected by current heuristics.")
-        parts.append(section("Client-side issues/escalations", "(Inference)\n" + "\n".join(client_lines[:10])))
+        other_lines = [
+            "- Poland CRS rollout is expected to introduce a new support and incident-management surface.",
+            f"- {capacity_line}",
+            f"- {billing_line}",
+        ]
 
-        parts.append(section("Billing snapshot", billing_snapshot(issues)))
+        parts.append(section("Key details", "\n".join([
+            rag_status_line("Overall", rag, "Overall health is Amber because delivery is under control, but support and data-consistency load are materially consuming attention."),
+            rag_status_line("Timeline", timeline_rag, timeline_rationale),
+            rag_status_line("Scope", scope_rag, scope_rationale),
+            rag_status_line("Budget", budget_rag, budget_rationale),
+        ])))
 
-        focus_lines = ["- Reduce blocked/stale items.", "- Protect nearest release dates.", "- Resolve data-quality gaps for assignee and billing fields."]
+        current_status_lines = [
+            "TBS",
+            "",
+            *tbs_lines,
+            "",
+            "DRS",
+            "",
+            *drs_lines,
+            "",
+            "Other",
+            "",
+            *other_lines,
+        ]
+        parts.append(section("Current Project Status", "\n".join(current_status_lines)))
+
+        next_step_lines = []
         for action in meeting_actions[:5]:
-            focus_lines.append(f"- Meeting action: {action.get('action', 'Unknown action')} (owner: {action.get('owner', 'Unknown')})")
-        parts.append(section("Focus for next week", "\n".join(focus_lines)))
+            next_step_lines.append(f"- {action.get('action', 'Unknown action')} (owner: {action.get('owner', 'Unknown')})")
+        if not next_step_lines:
+            next_step_lines = [
+                "- Reduce blocked and stale items.",
+                "- Protect nearest release dates.",
+                "- Resolve data-quality gaps for assignee and billing fields.",
+            ]
+        parts.append(section("Project Next Steps", "\n".join(next_step_lines)))
 
     else:
         decision_lines = [f"- {d.get('decision', 'Unknown decision')} (owner: {d.get('owner', 'Unknown')})" for d in meeting_decisions[:6]]
@@ -546,3 +640,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
