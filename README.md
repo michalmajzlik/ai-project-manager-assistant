@@ -51,6 +51,8 @@ Generate weekly report:
 powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly
 ```
 
+Generated reports are written to the local `outputs\` folder in the repository.
+
 Process meeting transcripts (optional):
 
 ```powershell
@@ -71,4 +73,5 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup_local.ps1 -PythonExe 'C:\Path\To\python.exe'
 ```
+
 
