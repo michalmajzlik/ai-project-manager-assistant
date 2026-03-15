@@ -20,17 +20,7 @@ function Resolve-RuntimeFile {
         [string]$RelativePath
     )
 
-    $primary = Join-Path (Join-Path $env:APPDATA 'AIPMAssistant') $RelativePath
-    $legacy = Join-Path (Join-Path $env:APPDATA 'SensoneoAI') $RelativePath
-    if ((Test-Path $primary) -and (Test-Path $legacy)) {
-        $primaryItem = Get-Item $primary
-        $legacyItem = Get-Item $legacy
-        if ($primaryItem.LastWriteTimeUtc -ge $legacyItem.LastWriteTimeUtc) { return $primary }
-        return $legacy
-    }
-    if (Test-Path $primary) { return $primary }
-    if (Test-Path $legacy) { return $legacy }
-    return $primary
+    return (Join-Path (Join-Path $env:APPDATA 'AIPMAssistant') $RelativePath)
 }
 
 if (-not $SecretFile) { $SecretFile = Resolve-RuntimeFile 'jira_secret.xml' }

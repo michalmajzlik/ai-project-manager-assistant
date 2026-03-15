@@ -11,11 +11,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $ConfigFile) {
-    $primary = Join-Path $env:APPDATA 'AIPMAssistant\jira_context.json'
-    $legacy = Join-Path $env:APPDATA 'SensoneoAI\jira_context.json'
-    if (Test-Path $primary) { $ConfigFile = $primary }
-    elseif (Test-Path $legacy) { $ConfigFile = $legacy }
-    else { $ConfigFile = $primary }
+    $ConfigFile = Join-Path $env:APPDATA 'AIPMAssistant\jira_context.json'
 }
 
 $dir = Split-Path -Parent $ConfigFile

@@ -50,9 +50,6 @@ The script loads from:
 
 If `reports.weekly.publish.enabled = true`, the weekly run also overwrites the configured Jira issue description via `reports.weekly.publish.jira_issue_key`.
 
-Compatibility note:
-- the runtime default is `%APPDATA%\AIPMAssistant\...`
-- older local files in `%APPDATA%\SensoneoAI\...` are still auto-discovered
 
 ## Direct CLI usage
 
@@ -64,3 +61,4 @@ Compatibility note:
 - Output language is EN.
 - Project-specific report layout lives in the local JSON config, not in the repository.
 - `pm_reports/config_templates/` contains tracked defaults that can be copied and customized locally.
+

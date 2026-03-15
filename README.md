@@ -75,9 +75,6 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType
 
 If your local project config has `reports.weekly.publish.enabled = true` and a `jira_issue_key`, the same command will also overwrite that Jira issue description with the generated weekly report.
 
-Compatibility note:
-- the repo now uses the neutral runtime directory `%APPDATA%\AIPMAssistant\...`
-- if you already have older local files in `%APPDATA%\SensoneoAI\...`, the scripts auto-discover and continue using them
 
 Generated reports are written to the local `outputs\reports\` folders in the repository.
 
@@ -102,3 +99,4 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup_local.ps1 -PythonExe 'C:\Path\To\python.exe'
 ```
+

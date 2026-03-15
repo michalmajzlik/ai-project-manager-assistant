@@ -20,17 +20,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Resolve-DefaultConfigFile {
-    $primary = Join-Path $env:APPDATA 'AIPMAssistant\project_report_config.json'
-    $legacy = Join-Path $env:APPDATA 'SensoneoAI\project_report_config.json'
-    if ((Test-Path $primary) -and (Test-Path $legacy)) {
-        $primaryItem = Get-Item $primary
-        $legacyItem = Get-Item $legacy
-        if ($primaryItem.LastWriteTimeUtc -ge $legacyItem.LastWriteTimeUtc) { return $primary }
-        return $legacy
-    }
-    if (Test-Path $primary) { return $primary }
-    if (Test-Path $legacy) { return $legacy }
-    return $primary
+    return (Join-Path $env:APPDATA 'AIPMAssistant\project_report_config.json')
 }
 
 if (-not $ConfigFile) {

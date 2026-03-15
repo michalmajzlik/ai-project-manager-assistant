@@ -9,19 +9,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 if (-not $ConfigFile) {
-    $primaryConfig = Join-Path $env:APPDATA 'AIPMAssistant\jira_context.json'
-    $legacyConfig = Join-Path $env:APPDATA 'SensoneoAI\jira_context.json'
-    if (Test-Path $primaryConfig) { $ConfigFile = $primaryConfig }
-    elseif (Test-Path $legacyConfig) { $ConfigFile = $legacyConfig }
-    else { $ConfigFile = $primaryConfig }
+    $ConfigFile = Join-Path $env:APPDATA 'AIPMAssistant\jira_context.json'
 }
 
 if (-not $SecretFile) {
-    $primarySecret = Join-Path $env:APPDATA 'AIPMAssistant\jira_secret.xml'
-    $legacySecret = Join-Path $env:APPDATA 'SensoneoAI\jira_secret.xml'
-    if (Test-Path $primarySecret) { $SecretFile = $primarySecret }
-    elseif (Test-Path $legacySecret) { $SecretFile = $legacySecret }
-    else { $SecretFile = $primarySecret }
+    $SecretFile = Join-Path $env:APPDATA 'AIPMAssistant\jira_secret.xml'
 }
 
 if ((-not $BaseUrl -or -not $Email) -and (Test-Path $ConfigFile)) {
