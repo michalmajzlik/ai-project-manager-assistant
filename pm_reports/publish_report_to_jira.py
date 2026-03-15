@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish a generated report into a Jira issue description."""
+"""Publish generated reports into Jira issues."""
 
 from __future__ import annotations
 
@@ -11,10 +11,19 @@ import re
 import urllib.error
 import urllib.request
 from pathlib import Path
+from typing import Any
 
 from project_config import get_publish_settings, load_project_config
 
 DEFAULT_PROJECT_CONFIG_PATH = Path(os.getenv("APPDATA", "")) / "SensoneoAI" / "project_report_config.json"
+DEFAULT_PROJECT_STATUS_FIELD_MAPPING = {
+    "rag_overall": "customfield_10272",
+    "rag_timeline": "customfield_10273",
+    "rag_scope": "customfield_10274",
+    "rag_budget": "customfield_10275",
+    "current_project_status": "customfield_10276",
+    "project_next_steps": "customfield_10277",
+}
 
 
 def get_auth_context() -> tuple[str, str]:
@@ -29,19 +38,38 @@ def get_auth_context() -> tuple[str, str]:
     return base_url.rstrip("/"), auth_header
 
 
-def text_node(text: str) -> dict:
+def jira_request(base_url: str, auth_header: str, path: str, method: str = "GET", payload: dict[str, Any] | None = None) -> Any:
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = urllib.request.Request(
+        f"{base_url}{path}",
+        data=data,
+        headers={
+            "Authorization": auth_header,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        },
+        method=method,
+    )
+    with urllib.request.urlopen(req, timeout=30) as response:
+        body = response.read()
+        if not body:
+            return None
+        return json.loads(body.decode("utf-8"))
+
+
+def text_node(text: str) -> dict[str, Any]:
     return {"type": "text", "text": text}
 
 
-def paragraph_node(text: str) -> dict:
+def paragraph_node(text: str) -> dict[str, Any]:
     return {"type": "paragraph", "content": [text_node(text)]}
 
 
-def heading_node(level: int, text: str) -> dict:
+def heading_node(level: int, text: str) -> dict[str, Any]:
     return {"type": "heading", "attrs": {"level": level}, "content": [text_node(text)]}
 
 
-def bullet_list_node(items: list[str]) -> dict:
+def bullet_list_node(items: list[str]) -> dict[str, Any]:
     return {
         "type": "bulletList",
         "content": [
@@ -54,8 +82,8 @@ def bullet_list_node(items: list[str]) -> dict:
     }
 
 
-def markdown_to_adf(markdown: str) -> dict:
-    blocks: list[dict] = []
+def markdown_to_adf(markdown: str) -> dict[str, Any]:
+    blocks: list[dict[str, Any]] = []
     bullet_buffer: list[str] = []
 
     def flush_bullets() -> None:
@@ -65,8 +93,7 @@ def markdown_to_adf(markdown: str) -> dict:
             bullet_buffer = []
 
     for raw_line in markdown.splitlines():
-        line = raw_line.rstrip()
-        stripped = line.strip()
+        stripped = raw_line.strip()
         if not stripped:
             flush_bullets()
             continue
@@ -77,7 +104,6 @@ def markdown_to_adf(markdown: str) -> dict:
             continue
 
         flush_bullets()
-
         heading_match = re.match(r"^(#{1,6})\s+(.*)$", stripped)
         if heading_match:
             level = min(len(heading_match.group(1)), 6)
@@ -90,21 +116,141 @@ def markdown_to_adf(markdown: str) -> dict:
     return {"version": 1, "type": "doc", "content": blocks}
 
 
-def update_issue_description(base_url: str, auth_header: str, issue_key: str, description_doc: dict) -> None:
-    payload = json.dumps({"fields": {"description": description_doc}}).encode("utf-8")
-    req = urllib.request.Request(
-        f"{base_url}/rest/api/3/issue/{issue_key}",
-        data=payload,
-        headers={
-            "Authorization": auth_header,
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        },
+def split_markdown_sections(markdown: str) -> tuple[list[str], dict[str, str]]:
+    lines = markdown.splitlines()
+    preamble: list[str] = []
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+
+    for line in lines:
+        heading_match = re.match(r"^##\s+(.*)$", line.strip())
+        if heading_match:
+            current = heading_match.group(1).strip()
+            sections[current] = []
+            continue
+        if current is None:
+            preamble.append(line)
+        else:
+            sections[current].append(line)
+
+    return preamble, {name: "\n".join(body).strip() for name, body in sections.items()}
+
+
+def extract_project_label(preamble: list[str]) -> str:
+    for line in preamble:
+        match = re.match(r"^Project:\s*(.*)$", line.strip())
+        if match:
+            return match.group(1).strip()
+    return ""
+
+
+def extract_rag_values(key_details_body: str) -> dict[str, str]:
+    rag_values: dict[str, str] = {}
+    lines = [line.strip() for line in key_details_body.splitlines() if line.strip()]
+    for line in lines:
+        match = re.match(r"^- RAG Status - ([^:]+):\s*(.+)$", line)
+        if match:
+            label = match.group(1).strip().lower().replace(" ", "_")
+            rag_values[label] = match.group(2).strip()
+    return rag_values
+
+
+def build_project_status_markdown(sections: dict[str, str]) -> str:
+    ordered = [
+        ("Key details", sections.get("Key details", "")),
+        ("Current Project Status", sections.get("Current Project Status", "")),
+        ("Client signal", sections.get("Client signal", "")),
+        ("Source notes", sections.get("Source notes", "")),
+    ]
+    chunks: list[str] = []
+    for title, body in ordered:
+        if not body:
+            continue
+        chunks.append(f"## {title}\n{body.strip()}")
+    return "\n\n".join(chunks).strip()
+
+
+def get_editmeta(base_url: str, auth_header: str, issue_key: str) -> dict[str, Any]:
+    payload = jira_request(base_url, auth_header, f"/rest/api/3/issue/{issue_key}/editmeta")
+    return payload if isinstance(payload, dict) else {}
+
+
+def option_id_for_value(editmeta: dict[str, Any], field_id: str, wanted_value: str) -> str:
+    fields = editmeta.get("fields", {}) if isinstance(editmeta, dict) else {}
+    field_meta = fields.get(field_id, {}) if isinstance(fields, dict) else {}
+    allowed = field_meta.get("allowedValues", []) if isinstance(field_meta, dict) else []
+    for option in allowed:
+        if str(option.get("value", "")).strip().lower() == wanted_value.strip().lower():
+            return str(option.get("id", ""))
+    raise KeyError(f"Option '{wanted_value}' not found for field {field_id}")
+
+
+def update_issue_fields(base_url: str, auth_header: str, issue_key: str, fields_payload: dict[str, Any]) -> None:
+    jira_request(
+        base_url,
+        auth_header,
+        f"/rest/api/3/issue/{issue_key}",
         method="PUT",
+        payload={"fields": fields_payload},
     )
-    with urllib.request.urlopen(req, timeout=30) as response:
-        if response.status not in (200, 204):
-            raise RuntimeError(f"Unexpected Jira response status: {response.status}")
+
+
+def publish_description_mode(base_url: str, auth_header: str, issue_key: str, report_text: str) -> None:
+    update_issue_fields(
+        base_url,
+        auth_header,
+        issue_key,
+        {"description": markdown_to_adf(report_text)},
+    )
+
+
+def publish_project_status_fields(
+    base_url: str,
+    auth_header: str,
+    issue_key: str,
+    report_text: str,
+    field_mapping: dict[str, str],
+) -> None:
+    preamble, sections = split_markdown_sections(report_text)
+    key_details = sections.get("Key details", "")
+    next_steps = sections.get("Project Next Steps", "")
+    if not key_details:
+        raise SystemExit("Weekly report is missing 'Key details' section.")
+    if not next_steps:
+        raise SystemExit("Weekly report is missing 'Project Next Steps' section.")
+
+    project_label = extract_project_label(preamble)
+    rag_values = extract_rag_values(key_details)
+    current_project_status_markdown = build_project_status_markdown(sections)
+    editmeta = get_editmeta(base_url, auth_header, issue_key)
+
+    overall_field = field_mapping["rag_overall"]
+    timeline_field = field_mapping["rag_timeline"]
+    scope_field = field_mapping["rag_scope"]
+    budget_field = field_mapping["rag_budget"]
+    current_status_field = field_mapping["current_project_status"]
+    next_steps_field = field_mapping["project_next_steps"]
+
+    overall_value = rag_values.get("overall")
+    timeline_value = rag_values.get("timeline")
+    scope_value = rag_values.get("scope")
+    budget_value = rag_values.get("budget")
+    if not all([overall_value, timeline_value, scope_value, budget_value]):
+        raise SystemExit("Could not parse all RAG values from the weekly report.")
+
+    fields_payload: dict[str, Any] = {
+        overall_field: {"id": option_id_for_value(editmeta, overall_field, overall_value)},
+        timeline_field: {"id": option_id_for_value(editmeta, timeline_field, timeline_value)},
+        scope_field: {"id": option_id_for_value(editmeta, scope_field, scope_value)},
+        budget_field: {"id": option_id_for_value(editmeta, budget_field, budget_value)},
+        current_status_field: markdown_to_adf(current_project_status_markdown),
+        next_steps_field: markdown_to_adf(next_steps),
+    }
+
+    if project_label:
+        fields_payload["summary"] = f"{project_label} - project status"
+
+    update_issue_fields(base_url, auth_header, issue_key, fields_payload)
 
 
 def main() -> int:
@@ -128,13 +274,19 @@ def main() -> int:
         return 0
     if not issue_key:
         raise SystemExit(f"Missing jira_issue_key for {args.report_type} publishing.")
-    if mode != "overwrite_description":
-        raise SystemExit(f"Unsupported publish mode: {mode}")
 
     base_url, auth_header = get_auth_context()
-    description_doc = markdown_to_adf(report_text)
     try:
-        update_issue_description(base_url, auth_header, issue_key, description_doc)
+        if mode == "overwrite_description":
+            publish_description_mode(base_url, auth_header, issue_key, report_text)
+        elif mode == "project_status_fields":
+            custom_mapping = publish_settings.get("field_mapping", {})
+            field_mapping = dict(DEFAULT_PROJECT_STATUS_FIELD_MAPPING)
+            if isinstance(custom_mapping, dict):
+                field_mapping.update({str(k): str(v) for k, v in custom_mapping.items() if v})
+            publish_project_status_fields(base_url, auth_header, issue_key, report_text, field_mapping)
+        else:
+            raise SystemExit(f"Unsupported publish mode: {mode}")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")
         raise SystemExit(f"Failed to update Jira issue {issue_key}: HTTP {exc.code} {body}") from exc
