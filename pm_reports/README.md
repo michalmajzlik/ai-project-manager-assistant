@@ -33,6 +33,7 @@ A human or Claude Code should ask:
 3. Which default profile fits best?
 4. Which keywords identify each weekly status section in Jira issue summaries or release names?
 5. Do you want custom daily or steering section labels, or keep the defaults?
+6. Should the weekly report also overwrite a Jira project-status issue? If yes, what is its issue key?
 
 ## Fastest usage (live Jira)
 
@@ -46,6 +47,8 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType
 The script loads from:
 - Jira credentials: `%APPDATA%\SensoneoAI\jira_secret.xml`
 - Project report config: `%APPDATA%\SensoneoAI\project_report_config.json`
+
+If `reports.weekly.publish.enabled = true`, the weekly run also overwrites the configured Jira issue description via `reports.weekly.publish.jira_issue_key`.
 
 ## Direct CLI usage
 

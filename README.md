@@ -57,6 +57,7 @@ Your local project config is stored here and is intentionally kept outside git:
 4. Which weekly status sections should be renamed or customized?
 5. Which Jira issue/release keywords identify each weekly section?
 6. Do you want to keep default daily and steering section labels, or rename them?
+7. Should weekly report output also overwrite a Jira project-status issue? If yes, what is the issue key?
 
 ## Main Usage
 
@@ -71,6 +72,8 @@ Generate weekly report:
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly
 ```
+
+If your local project config has `reports.weekly.publish.enabled = true` and a `jira_issue_key`, the same command will also overwrite that Jira issue description with the generated weekly report.
 
 Generated reports are written to the local `outputs\reports\` folders in the repository.
 

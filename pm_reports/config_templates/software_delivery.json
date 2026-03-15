@@ -32,6 +32,11 @@
         "data_quality_issues": "Data quality issues",
         "source_notes": "Source notes"
       },
+      "publish": {
+        "enabled": false,
+        "jira_issue_key": "",
+        "mode": "overwrite_description"
+      },
       "status_sections": [
         {
           "name": "Delivery",

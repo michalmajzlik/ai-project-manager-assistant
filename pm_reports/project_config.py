@@ -64,6 +64,11 @@ DEFAULT_PROJECT_CONFIG = {
                 "data_quality_issues": "Data quality issues",
                 "source_notes": "Source notes",
             },
+            "publish": {
+                "enabled": False,
+                "jira_issue_key": "",
+                "mode": "overwrite_description",
+            },
             "status_sections": copy.deepcopy(DEFAULT_WEEKLY_STATUS_SECTIONS),
         },
         "steering": {
@@ -133,3 +138,16 @@ def get_weekly_status_sections(report_settings: dict[str, Any]) -> list[dict[str
     if isinstance(sections, list) and sections:
         return sections
     return copy.deepcopy(DEFAULT_WEEKLY_STATUS_SECTIONS)
+
+
+def get_publish_settings(config: dict[str, Any], report_type: str) -> dict[str, Any]:
+    if not isinstance(config, dict):
+        return {}
+    reports = config.get('reports', {})
+    if not isinstance(reports, dict):
+        return {}
+    report_settings = reports.get(report_type, {})
+    if not isinstance(report_settings, dict):
+        return {}
+    publish = report_settings.get('publish', {})
+    return publish if isinstance(publish, dict) else {}

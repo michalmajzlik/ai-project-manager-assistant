@@ -89,3 +89,12 @@ if ($ReportType -eq 'weekly') {
 
 & $python (Join-Path $root 'report_builder.py') --report-type $ReportType --project $Project --project-key $ProjectKey --project-config $ProjectConfigFile --live-jira --output $OutputPath @emailArgs
 Write-Host "Generated: $OutputPath"
+
+if ($ReportType -eq 'weekly') {
+    try {
+        & $python (Join-Path $root 'publish_report_to_jira.py') --report-type $ReportType --report-file $OutputPath --project-config $ProjectConfigFile | Out-Host
+    }
+    catch {
+        Write-Warning "Weekly Jira status publish failed. Report file was generated, but Jira issue was not updated. $($_.Exception.Message)"
+    }
+}
