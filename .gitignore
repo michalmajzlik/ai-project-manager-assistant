@@ -50,7 +50,13 @@ Meetings/processor.log
 # Local/generated outputs
 outputs/*
 !outputs/.gitkeep
-!outputs/example_daily_report.md
-!outputs/example_daily_client_standup.md
-!outputs/example_weekly_project_status.md
+!outputs/README.md
+!outputs/examples/
+!outputs/examples/**
+
+# Optional local project config if someone stores it in the repo by mistake
+pm_reports/*.local.json
+pm_reports/project_report_config.json
+pm_reports/configs/local/
+pm_reports/config_templates/local/
 

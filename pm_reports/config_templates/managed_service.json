@@ -1,0 +1,111 @@
+{
+  "schema_version": 1,
+  "profile": "managed_service",
+  "project": {
+    "name": "<project-name>",
+    "key": "<project-key>",
+    "display_name": "<project-display-name>"
+  },
+  "reports": {
+    "daily": {
+      "header_style": "standard",
+      "title": "Daily Report",
+      "project_label": "Project",
+      "section_titles": {
+        "yesterday_completed": "Yesterday completed",
+        "today_plan": "Today plan",
+        "blockers_and_risks": "Blockers and risks",
+        "release_status": "Release status",
+        "client_actions_needed": "Client actions needed",
+        "data_quality_issues": "Data quality issues",
+        "source_notes": "Source notes"
+      }
+    },
+    "weekly": {
+      "header_style": "compact",
+      "title": "Weekly Report",
+      "project_label": "Project",
+      "section_titles": {
+        "key_details": "Key details",
+        "current_project_status": "Current Project Status",
+        "project_next_steps": "Project Next Steps",
+        "data_quality_issues": "Data quality issues",
+        "source_notes": "Source notes"
+      },
+      "status_sections": [
+        {
+          "name": "Operations",
+          "kind": "delivery_support",
+          "keywords": [
+            "incident",
+            "support",
+            "ops",
+            "production",
+            "monitoring"
+          ],
+          "business_impact": "Business impact: operational load directly affects SLA perception and reduces improvement capacity.",
+          "include_top_risk": true
+        },
+        {
+          "name": "Delivery",
+          "kind": "release_delivery",
+          "keywords": [
+            "release",
+            "migration",
+            "feature",
+            "integration"
+          ],
+          "release_keywords": [
+            "release",
+            "migration",
+            "feature",
+            "integration"
+          ],
+          "sentiment_line": "Delivery work remains active alongside operations, with release confidence driven by how much work can stay protected from production interruptions."
+        },
+        {
+          "name": "Scope and estimation",
+          "kind": "scope_estimation",
+          "scope_keywords": [
+            "story",
+            "feature",
+            "enhancement",
+            "integration",
+            "report",
+            "backlog",
+            "refinement"
+          ],
+          "coordination_keywords": [
+            "pmo",
+            "client meeting",
+            "internal project meetings",
+            "refinement"
+          ],
+          "scope_line_template": "Scope shaping remains active, with {count} relevant items currently in backlog/preparation; this keeps the pipeline full, but part of near-term scope is still being refined rather than executed.",
+          "scope_stable_line": "Scope is moving without a clear signal of uncontrolled expansion in the current weekly window.",
+          "coordination_line_template": "Coordination overhead remains visible in project-management and client-facing work, with ongoing items such as {issue}."
+        },
+        {
+          "name": "Budget",
+          "kind": "budget",
+          "forward_risk": "Forward-looking risk: until billing fields become reliable, budget control can only be assessed partially and should be treated with caution."
+        }
+      ]
+    },
+    "steering": {
+      "header_style": "standard",
+      "title": "Steering Report",
+      "project_label": "Project",
+      "section_titles": {
+        "overall_project_health": "Overall project health",
+        "timeline_and_milestones": "Timeline and milestones",
+        "release_readiness_summary": "Release readiness summary",
+        "budget_billing_snapshot": "Budget/billing snapshot",
+        "decisions_required": "Decisions required",
+        "next_period_priorities": "Next period priorities",
+        "data_quality_issues": "Data quality issues",
+        "source_notes": "Source notes"
+      }
+    }
+  }
+}

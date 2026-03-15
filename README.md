@@ -1,4 +1,4 @@
-﻿# ai-pm-assistant
+# ai-pm-assistant
 AI toolkit for IT Project Managers that creates a personal project intelligence assistant.
 
 It aggregates data from Jira, meetings, emails, and calendars to automate reporting, generate summaries, prepare management presentations, and track project progress.
@@ -24,18 +24,39 @@ powershell -ExecutionPolicy Bypass -File .\jira_mcp\install_tasks.ps1 -RunNow
 ```
 
 Notes:
-- Jira context (non-secret) is stored per Windows user in `%APPDATA%\AIPMAssistant\jira_context.json`.
-- Jira secret is stored per Windows user in `%APPDATA%\AIPMAssistant\jira_secret.xml`.
+- Jira context (non-secret) is stored per Windows user in `%APPDATA%\SensoneoAI\jira_context.json`.
+- Jira secret is stored per Windows user in `%APPDATA%\SensoneoAI\jira_secret.xml`.
 - Scheduled tasks are local OS objects, so they must be installed on each machine.
 
-## Project Context Setup (required for reports)
+## Project Report Setup (required for reports)
+
+1. Review built-in profile choices:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -ShowProfiles
 ```
 
-This saves local report context to:
-- `%APPDATA%\AIPMAssistant\project_report_config.json`
+2. Create your local project report config:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>' -DisplayName '<project-display-name>' -Profile software_delivery
+```
+
+Your local project config is stored here and is intentionally kept outside git:
+- `%APPDATA%\SensoneoAI\project_report_config.json`
+
+## Default report profiles
+- `software_delivery` (recommended default): `Delivery`, `Scope and estimation`, `Budget`
+- `multi_workstream`: two named workstreams plus shared scope/budget
+- `managed_service`: `Operations`, `Delivery`, `Scope and estimation`, `Budget`
+
+## Setup questions a human or Claude Code should ask
+1. What is the Jira project key?
+2. What display name should appear in reports?
+3. Which default report profile fits best?
+4. Which weekly status sections should be renamed or customized?
+5. Which Jira issue/release keywords identify each weekly section?
+6. Do you want to keep default daily and steering section labels, or rename them?
 
 ## Main Usage
 
@@ -51,7 +72,7 @@ Generate weekly report:
 powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType weekly
 ```
 
-Generated reports are written to the local `outputs\` folder in the repository.
+Generated reports are written to the local `outputs\reports\` folders in the repository.
 
 Process meeting transcripts (optional):
 
@@ -66,12 +87,11 @@ setx OPENAI_API_KEY '<your-key>'
 - If report run fails with missing project context, run:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -ShowProfiles
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>' -DisplayName '<project-display-name>' -Profile software_delivery
 ```
 - If Python is not found, rerun bootstrap with explicit path:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\setup_local.ps1 -PythonExe 'C:\Path\To\python.exe'
 ```
-
-

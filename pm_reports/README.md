@@ -1,4 +1,4 @@
-﻿# PM Reports Engine (v1)
+# PM Reports Engine
 
 Uses `REPORT_CONTRACT.md` as source-of-truth for report structure and logic.
 
@@ -11,11 +11,28 @@ powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_context.ps1 -Base
 powershell -ExecutionPolicy Bypass -File .\jira_mcp\setup_jira_secret.ps1
 ```
 
-2. Configure project context (variables used by report runner):
+2. Choose a local project report profile and create your local config:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>'
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -ShowProfiles
+powershell -ExecutionPolicy Bypass -File .\pm_reports\setup_project_context.ps1 -Project '<project-name>' -ProjectKey '<project-key>' -DisplayName '<project-display-name>' -Profile software_delivery
 ```
+
+Local project config is stored here and stays outside git:
+- `%APPDATA%\SensoneoAI\project_report_config.json`
+
+## Default profile choices
+- `software_delivery` (recommended): `Delivery`, `Scope and estimation`, `Budget`
+- `multi_workstream`: two named workstreams plus shared scope/budget
+- `managed_service`: `Operations`, `Delivery`, `Scope and estimation`, `Budget`
+
+## Questions to answer during setup
+A human or Claude Code should ask:
+1. What is the Jira project key?
+2. What project display name should appear in reports?
+3. Which default profile fits best?
+4. Which keywords identify each weekly status section in Jira issue summaries or release names?
+5. Do you want custom daily or steering section labels, or keep the defaults?
 
 ## Fastest usage (live Jira)
 
@@ -27,26 +44,16 @@ powershell -ExecutionPolicy Bypass -File .\pm_reports\run_report.ps1 -ReportType
 ```
 
 The script loads from:
-- Jira context: `%APPDATA%\AIPMAssistant\jira_context.json`
-- Jira credentials: `%APPDATA%\AIPMAssistant\jira_secret.xml`
-- Project context: `%APPDATA%\AIPMAssistant\project_report_config.json`
+- Jira credentials: `%APPDATA%\SensoneoAI\jira_secret.xml`
+- Project report config: `%APPDATA%\SensoneoAI\project_report_config.json`
 
 ## Direct CLI usage
 
 ```powershell
-& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project '<project-name>' --project-key '<project-key>' --live-jira --output '.\outputs\daily_report.md'
-```
-
-## JSON input mode (offline/test)
-
-```powershell
-& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type daily --project '<project-name>' --jira '.\pm_reports\sample_jira.json' --output '.\outputs\daily_report.md'
+& 'C:\Users\<user>\AppData\Local\Programs\Python\Python312\python.exe' '.\pm_reports\report_builder.py' --report-type weekly --project '<project-display-name>' --project-key '<project-key>' --project-config '%APPDATA%\SensoneoAI\project_report_config.json' --live-jira --output '.\outputs\reports\weekly\weekly_project_status_YYYY-MM-DD.md'
 ```
 
 ## Notes
-
 - Output language is EN.
-- Inferred statements are explicitly labeled `(Inference)`.
-- Billing v1 uses `Chargeable=True` and `Actual spent` if available.
-- Capacity v1 is MD-oriented and ready for Tempo integration.
-
+- Project-specific report layout lives in the local JSON config, not in the repository.
+- `pm_reports/config_templates/` contains tracked defaults that can be copied and customized locally.

@@ -13,7 +13,16 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from project_config import (
+    get_project_value,
+    get_report_settings,
+    get_section_title,
+    get_weekly_status_sections,
+    load_project_config,
+)
+
 DEFAULT_MEETINGS_PATH = Path(__file__).resolve().parents[1] / "Meetings" / "records"
+DEFAULT_PROJECT_CONFIG_PATH = Path(os.getenv("APPDATA", "")) / "SensoneoAI" / "project_report_config.json"
 
 
 def load_json_file(path: Path | None) -> dict[str, Any]:
@@ -341,7 +350,7 @@ def section(title: str, body: str) -> str:
 
 
 def rag_status_line(label: str, value: str, rationale: str) -> str:
-    return f"- RAG Status: {label}: {value}\n- Rationale: {rationale}"
+    return f"- RAG Status - {label}: {value}\n- Rationale: {rationale}"
 
 
 def infer_timeline_rag(issues: list[dict[str, Any]], releases: list[dict[str, Any]], meeting_risks: list[dict[str, Any]]) -> tuple[str, str]:
@@ -380,8 +389,11 @@ def infer_budget_rag(issues: list[dict[str, Any]], epic_capacity_issues: list[di
     return "Green", "Current available effort data does not indicate a major budget-control issue."
 
 
-def active_releases_headline(releases: list[dict[str, Any]], limit: int = 3) -> str:
+def active_releases_headline(releases: list[dict[str, Any]], limit: int = 3, keywords: list[str] | None = None) -> str:
     active = [r for r in releases if not r.get("released") and not r.get("archived")]
+    if keywords:
+        lowered = [k.lower() for k in keywords]
+        active = [r for r in active if any(k in str(r.get("name", "")).lower() for k in lowered)]
     if not active:
         return "No active Jira releases are currently listed."
     named = []
@@ -409,6 +421,89 @@ def billing_headline(issues: list[dict[str, Any]]) -> str:
     return f"Chargeable Jira scope covers {len(chargeable)} issues with {actual_total:.1f} hours logged; {missing} items still miss usable actual spent data."
 
 
+def issues_with_keywords(issues: list[dict[str, Any]], keywords: list[str]) -> list[dict[str, Any]]:
+    if not keywords:
+        return []
+    lowered = [keyword.lower() for keyword in keywords]
+    matches: list[dict[str, Any]] = []
+    for issue in issues:
+        summary = str(issue.get("summary", "")).lower()
+        if any(keyword in summary for keyword in lowered):
+            matches.append(issue)
+    return matches
+
+
+def format_issue_change(issue: dict[str, Any]) -> str:
+    return f"{issue.get('key', '?')} ({issue.get('status', 'Unknown')}): {issue.get('summary', 'Unknown summary')}"
+
+
+def prep_scope_count(issues: list[dict[str, Any]]) -> int:
+    prep_statuses = {"in preparation", "backlog", "selected for development"}
+    return sum(1 for issue in issues if str(issue.get("status", "")).lower() in prep_statuses)
+
+
+def render_weekly_status_section(
+    section_cfg: dict[str, Any],
+    issues: list[dict[str, Any]],
+    releases: list[dict[str, Any]],
+    meeting_risks: list[dict[str, Any]],
+    epic_capacity_issues: list[dict[str, Any]],
+) -> tuple[str, list[str]]:
+    name = str(section_cfg.get("name") or "Status")
+    kind = str(section_cfg.get("kind") or "delivery_support")
+
+    if kind == "delivery_support":
+        matches = issues_with_keywords(issues, list(section_cfg.get("keywords", [])))
+        lines: list[str] = []
+        if matches:
+            lines.append(
+                f"- This week {name} work stayed split between planned delivery and production-facing support; latest live items include {format_issue_change(matches[0])}."
+            )
+        else:
+            lines.append(str(section_cfg.get("empty_line") or f"- This week {name} remained stable, with no major new delivery disruption visible in Jira."))
+        lines.append(str(section_cfg.get("business_impact") or "- Business impact: support interruptions are still competing with planned feature delivery."))
+        if section_cfg.get("include_top_risk") and meeting_risks:
+            top_risk = meeting_risks[0]
+            lines.append(
+                f"- Main cross-team risk raised this week: {top_risk.get('risk', 'Unknown risk')} (impact: {top_risk.get('impact', 'Unknown')})."
+            )
+        return name, lines
+
+    if kind == "release_delivery":
+        lines = [str(section_cfg.get("sentiment_line") or f"- {name} delivery remained stable in the current reporting window.")]
+        release_keywords = list(section_cfg.get("release_keywords", []))
+        lines.append(f"- Delivery path: {active_releases_headline(releases, keywords=release_keywords or list(section_cfg.get('keywords', [])))}")
+        return name, lines
+
+    if kind == "scope_estimation":
+        scope_keywords = list(section_cfg.get("scope_keywords", []))
+        coordination_keywords = list(section_cfg.get("coordination_keywords", []))
+        scope_focus = issues_with_keywords(issues, scope_keywords)
+        coordination_focus = issues_with_keywords(issues, coordination_keywords)
+        count = prep_scope_count(scope_focus)
+        lines = []
+        if count:
+            template = str(section_cfg.get("scope_line_template") or "Scope shaping remains active, with {count} relevant items currently in backlog/preparation.")
+            lines.append(f"- {template.format(count=count)}")
+        else:
+            lines.append(f"- {section_cfg.get('scope_stable_line') or 'Scope is moving without a clear signal of uncontrolled expansion in the current weekly window.'}")
+        if coordination_focus:
+            template = str(section_cfg.get("coordination_line_template") or "Coordination overhead remains visible, with ongoing items such as {issue}.")
+            lines.append(f"- {template.format(issue=format_issue_change(coordination_focus[0]))}")
+        return name, lines
+
+    if kind == "budget":
+        lines = [
+            f"- Capacity signal: {capacity_headline(epic_capacity_issues)}",
+            f"- Commercial signal: {billing_headline(issues)}",
+            f"- {section_cfg.get('forward_risk') or 'Forward-looking risk: budget control should be treated with caution while billing evidence remains incomplete.'}",
+        ]
+        return name, lines
+
+    fallback = str(section_cfg.get("fallback_line") or f"- No renderer is configured for section kind '{kind}'.")
+    return name, [fallback]
+
+
 def build_report(
     report_type: str,
     project_label: str,
@@ -418,6 +513,7 @@ def build_report(
     calendar: dict[str, Any],
     emails: dict[str, Any],
     contract_path: Path,
+    report_config: dict[str, Any],
     epic_capacity_issues: list[dict[str, Any]] | None = None,
 ) -> str:
     rag = infer_rag(issues)
@@ -427,15 +523,28 @@ def build_report(
     meeting_actions = flatten_meeting_items(recent_meetings, "action_items")
     meeting_risks = flatten_meeting_items(recent_meetings, "risks")
     meeting_decisions = flatten_meeting_items(recent_meetings, "decisions")
+    report_settings = get_report_settings(report_config, report_type)
 
-    parts = [
-        f"# {report_type.title()} Report - {project_label}",
-        f"Date: {now}",
-        "Language: EN",
-        f"Contract source: {contract_path}",
-        f"(Inference) Overall RAG via v1 heuristic: **{rag}**.",
-        "",
-    ]
+    header_style = str(report_settings.get("header_style") or "standard")
+    title = str(report_settings.get("title") or f"{report_type.title()} Report")
+    project_label_key = str(report_settings.get("project_label") or "Project")
+
+    if header_style == "compact":
+        parts = [
+            f"# {title}",
+            f"Date: {now}",
+            f"{project_label_key}: {project_label}",
+            "",
+        ]
+    else:
+        parts = [
+            f"# {title} - {project_label}",
+            f"Date: {now}",
+            "Language: EN",
+            f"Contract source: {contract_path}",
+            f"(Inference) Overall RAG via v1 heuristic: **{rag}**.",
+            "",
+        ]
 
     if report_type == "daily":
         done_yesterday = [i for i in issues if "done" in str(i.get("status", "")).lower() or "closed" in str(i.get("status", "")).lower()]
@@ -444,7 +553,7 @@ def build_report(
 
         yesterday_lines = [f"- Completed/closed Jira items in scope: {len(done_yesterday)}."]
         yesterday_lines.extend(meeting_summary_lines(recent_meetings, limit=4))
-        parts.append(section("Yesterday completed", "\n".join(yesterday_lines)))
+        parts.append(section(get_section_title(report_settings, "yesterday_completed", "Yesterday completed"), "\n".join(yesterday_lines)))
 
         today_lines = [f"- {i.get('key')}: {i.get('summary')} ({i.get('status')})" for i in active_today[:8]]
         open_actions = [a for a in meeting_actions if str(a.get("status", "Open")).lower() != "done"]
@@ -452,15 +561,15 @@ def build_report(
             today_lines.append(f"- Meeting follow-up: {item.get('action', 'Unknown action')} (owner: {item.get('owner', 'Unknown')})")
         if not today_lines:
             today_lines = ["- No active tickets in provided daily scope."]
-        parts.append(section("Today plan", "\n".join(today_lines)))
+        parts.append(section(get_section_title(report_settings, "today_plan", "Today plan"), "\n".join(today_lines)))
 
         risk_lines = [f"- {b.get('key')}: {b.get('summary')} ({b.get('status')})" for b in blockers]
         for risk in meeting_risks[:6]:
             risk_lines.append(f"- Meeting risk: {risk.get('risk', 'Unknown')} (impact: {risk.get('impact', 'Unknown')}, owner: {risk.get('owner', 'Unknown')})")
         if not risk_lines:
             risk_lines = ["- No explicit blocked status or meeting risk found in scope."]
-        parts.append(section("Blockers and risks", "(Inference)\n" + "\n".join(risk_lines)))
-        parts.append(section("Release status", releases_summary(releases)))
+        parts.append(section(get_section_title(report_settings, "blockers_and_risks", "Blockers and risks"), "(Inference)\n" + "\n".join(risk_lines)))
+        parts.append(section(get_section_title(report_settings, "release_status", "Release status"), releases_summary(releases)))
 
         actions = []
         unassigned = [i for i in issues if not i.get("assignee")]
@@ -470,60 +579,31 @@ def build_report(
             actions.append(f"- Assign owners for unassigned items: {', '.join(i.get('key', '?') for i in unassigned[:8])}.")
         if not actions:
             actions.append("- No explicit client action required from current data window.")
-        parts.append(section("Client actions needed", "\n".join(actions)))
+        parts.append(section(get_section_title(report_settings, "client_actions_needed", "Client actions needed"), "\n".join(actions)))
 
     elif report_type == "weekly":
         timeline_rag, timeline_rationale = infer_timeline_rag(issues, releases, meeting_risks)
         scope_rag, scope_rationale = infer_scope_rag(issues, meeting_actions, meeting_decisions)
         budget_rag, budget_rationale = infer_budget_rag(issues, epic_capacity_issues if epic_capacity_issues is not None else [])
-        release_headline = active_releases_headline(releases)
-        capacity_line = capacity_headline(epic_capacity_issues if epic_capacity_issues is not None else [])
-        billing_line = billing_headline(issues)
 
-        tbs_lines = [
-            "- Active support and data-consistency work continues across TBS and related integrations.",
-            "- Infrastructure and migration topics remain in progress and still consume delivery attention.",
-        ]
-        if meeting_risks:
-            top_risk = meeting_risks[0]
-            tbs_lines.append(
-                f"- Main delivery risk raised in meetings: {top_risk.get('risk', 'Unknown risk')} "
-                f"(impact: {top_risk.get('impact', 'Unknown')})."
-            )
-
-        drs_lines = [
-            "- Recent DRS delivery feedback was positive, with no major quality concern surfaced in the latest retrospective.",
-            "- Operational synchronization between DRS and adjacent systems remains an active follow-up area.",
-            f"- {release_headline}",
-        ]
-
-        other_lines = [
-            "- Poland CRS rollout is expected to introduce a new support and incident-management surface.",
-            f"- {capacity_line}",
-            f"- {billing_line}",
-        ]
-
-        parts.append(section("Key details", "\n".join([
+        parts.append(section(get_section_title(report_settings, "key_details", "Key details"), "\n".join([
             rag_status_line("Overall", rag, "Overall health is Amber because delivery is under control, but support and data-consistency load are materially consuming attention."),
             rag_status_line("Timeline", timeline_rag, timeline_rationale),
             rag_status_line("Scope", scope_rag, scope_rationale),
             rag_status_line("Budget", budget_rag, budget_rationale),
         ])))
 
-        current_status_lines = [
-            "TBS",
-            "",
-            *tbs_lines,
-            "",
-            "DRS",
-            "",
-            *drs_lines,
-            "",
-            "Other",
-            "",
-            *other_lines,
-        ]
-        parts.append(section("Current Project Status", "\n".join(current_status_lines)))
+        status_lines: list[str] = []
+        for section_cfg in get_weekly_status_sections(report_settings):
+            section_name, lines = render_weekly_status_section(
+                section_cfg=section_cfg,
+                issues=issues,
+                releases=releases,
+                meeting_risks=meeting_risks,
+                epic_capacity_issues=epic_capacity_issues if epic_capacity_issues is not None else [],
+            )
+            status_lines.extend([section_name, "", *lines, ""])
+        parts.append(section(get_section_title(report_settings, "current_project_status", "Current Project Status"), "\n".join(status_lines).strip()))
 
         next_step_lines = []
         for action in meeting_actions[:5]:
@@ -534,21 +614,21 @@ def build_report(
                 "- Protect nearest release dates.",
                 "- Resolve data-quality gaps for assignee and billing fields.",
             ]
-        parts.append(section("Project Next Steps", "\n".join(next_step_lines)))
+        parts.append(section(get_section_title(report_settings, "project_next_steps", "Project Next Steps"), "\n".join(next_step_lines)))
 
     else:
         decision_lines = [f"- {d.get('decision', 'Unknown decision')} (owner: {d.get('owner', 'Unknown')})" for d in meeting_decisions[:6]]
         if not decision_lines:
             decision_lines = ["- Confirm scope freeze or defer list for nearest release.", "- Confirm owner for top delivery risks."]
-        parts.append(section("Overall project health", f"(Inference) Current health: **{rag}**."))
-        parts.append(section("Timeline and milestones", releases_summary(releases)))
-        parts.append(section("Release readiness summary", "- Readiness derived from blockers, stale items, owner coverage, and meeting risks."))
-        parts.append(section("Budget/billing snapshot", billing_snapshot(issues)))
-        parts.append(section("Decisions required", "\n".join(decision_lines)))
-        parts.append(section("Next period priorities", "- Stabilize release-critical scope.\n- Reduce dependency risk."))
+        parts.append(section(get_section_title(report_settings, "overall_project_health", "Overall project health"), f"(Inference) Current health: **{rag}**."))
+        parts.append(section(get_section_title(report_settings, "timeline_and_milestones", "Timeline and milestones"), releases_summary(releases)))
+        parts.append(section(get_section_title(report_settings, "release_readiness_summary", "Release readiness summary"), "- Readiness derived from blockers, stale items, owner coverage, and meeting risks."))
+        parts.append(section(get_section_title(report_settings, "budget_billing_snapshot", "Budget/billing snapshot"), billing_snapshot(issues)))
+        parts.append(section(get_section_title(report_settings, "decisions_required", "Decisions required"), "\n".join(decision_lines)))
+        parts.append(section(get_section_title(report_settings, "next_period_priorities", "Next period priorities"), "- Stabilize release-critical scope.\n- Reduce dependency risk."))
 
-    parts.append(section("Data quality issues", data_quality_issues(issues)))
-    parts.append(section("Source notes", f"Meetings input items: {len(meeting_records)}; calendar input items: {len(calendar.get('items', [])) if isinstance(calendar.get('items'), list) else 0}; email input items: {len(emails.get('items', [])) if isinstance(emails.get('items'), list) else 0}."))
+    parts.append(section(get_section_title(report_settings, "data_quality_issues", "Data quality issues"), data_quality_issues(issues)))
+    parts.append(section(get_section_title(report_settings, "source_notes", "Source notes"), f"Meetings input items: {len(meeting_records)}; calendar input items: {len(calendar.get('items', [])) if isinstance(calendar.get('items'), list) else 0}; email input items: {len(emails.get('items', [])) if isinstance(emails.get('items'), list) else 0}."))
     return "\n".join(parts)
 
 
@@ -593,8 +673,9 @@ def live_jira_dataset(report_type: str, project_key: str) -> dict[str, Any]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate PM report drafts aligned to REPORT_CONTRACT.md")
     parser.add_argument("--report-type", choices=["daily", "weekly", "steering"], required=True)
-    parser.add_argument("--project", default="<project-name>")
-    parser.add_argument("--project-key", default="<project-key>")
+    parser.add_argument("--project", default="")
+    parser.add_argument("--project-key", default="")
+    parser.add_argument("--project-config", type=Path, default=DEFAULT_PROJECT_CONFIG_PATH)
     parser.add_argument("--live-jira", action="store_true")
     parser.add_argument("--jira", type=Path)
     parser.add_argument("--meetings", type=Path, default=DEFAULT_MEETINGS_PATH)
@@ -607,8 +688,15 @@ def main() -> int:
     if not args.contract.exists():
         raise SystemExit(f"Contract file not found: {args.contract}")
 
+    project_config = load_project_config(args.project_config)
+    project_label = args.project or get_project_value(project_config, "display_name") or get_project_value(project_config, "name")
+    project_key = args.project_key or get_project_value(project_config, "key")
+
+    if not project_label or not project_key:
+        raise SystemExit("Missing project context. Provide --project/--project-key or configure --project-config.")
+
     if args.live_jira:
-        jira = live_jira_dataset(args.report_type, args.project_key)
+        jira = live_jira_dataset(args.report_type, project_key)
     else:
         jira = load_json(args.jira)
 
@@ -622,13 +710,14 @@ def main() -> int:
 
     report = build_report(
         report_type=args.report_type,
-        project_label=args.project,
+        project_label=project_label,
         issues=issues,
         releases=releases,
         meetings=meetings,
         calendar=calendar,
         emails=emails,
         contract_path=args.contract,
+        report_config=project_config,
         epic_capacity_issues=epic_capacity_issues,
     )
 
@@ -640,5 +729,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

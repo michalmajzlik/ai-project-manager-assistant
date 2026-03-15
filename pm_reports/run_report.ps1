@@ -1,4 +1,4 @@
-﻿param(
+param(
     [Parameter(Mandatory=$true)]
     [ValidateSet('daily','weekly','steering')]
     [string]$ReportType,
@@ -6,8 +6,8 @@
     [string]$Project,
     [string]$ProjectKey,
     [string]$OutputPath,
-    [string]$SecretFile = "$env:APPDATA\AIPMAssistant\jira_secret.xml",
-    [string]$ProjectConfigFile = "$env:APPDATA\AIPMAssistant\project_report_config.json"
+    [string]$SecretFile = "$env:APPDATA\SensoneoAI\jira_secret.xml",
+    [string]$ProjectConfigFile = "$env:APPDATA\SensoneoAI\project_report_config.json"
 )
 
 $ErrorActionPreference = 'Stop'
@@ -32,8 +32,11 @@ function Resolve-Python {
 
 if ((-not $Project -or -not $ProjectKey) -and (Test-Path $ProjectConfigFile)) {
     $cfg = Get-Content $ProjectConfigFile -Raw | ConvertFrom-Json
-    if (-not $Project -and $cfg.Project) { $Project = [string]$cfg.Project }
-    if (-not $ProjectKey -and $cfg.ProjectKey) { $ProjectKey = [string]$cfg.ProjectKey }
+    if (-not $Project) {
+        if ($cfg.project.display_name) { $Project = [string]$cfg.project.display_name }
+        elseif ($cfg.project.name) { $Project = [string]$cfg.project.name }
+    }
+    if (-not $ProjectKey -and $cfg.project.key) { $ProjectKey = [string]$cfg.project.key }
 }
 
 if (-not $Project -or -not $ProjectKey) {
@@ -41,9 +44,16 @@ if (-not $Project -or -not $ProjectKey) {
 }
 
 if (-not $OutputPath) {
-    $outputsDir = Join-Path $workspaceRoot 'outputs'
-    if (-not (Test-Path $outputsDir)) { New-Item -ItemType Directory -Path $outputsDir -Force | Out-Null }
-    $OutputPath = Join-Path $outputsDir ("{0}_{1}.md" -f $ReportType, (Get-Date -Format 'yyyyMMdd_HHmm'))
+    $reportFolder = Join-Path $workspaceRoot (Join-Path 'outputs\reports' $ReportType)
+    if (-not (Test-Path $reportFolder)) { New-Item -ItemType Directory -Path $reportFolder -Force | Out-Null }
+
+    $datePart = Get-Date -Format 'yyyy-MM-dd'
+    switch ($ReportType) {
+        'daily' { $fileName = "daily_report_$datePart.md" }
+        'weekly' { $fileName = "weekly_project_status_$datePart.md" }
+        'steering' { $fileName = "steering_report_$datePart.md" }
+    }
+    $OutputPath = Join-Path $reportFolder $fileName
 }
 
 if (-not (Test-Path $SecretFile)) {
@@ -60,8 +70,5 @@ if (-not $python) {
     throw "Python not found. Install Python 3.10+ or ensure python.exe is available in PATH."
 }
 
-& $python (Join-Path $root 'report_builder.py') --report-type $ReportType --project $Project --project-key $ProjectKey --live-jira --output $OutputPath
+& $python (Join-Path $root 'report_builder.py') --report-type $ReportType --project $Project --project-key $ProjectKey --project-config $ProjectConfigFile --live-jira --output $OutputPath
 Write-Host "Generated: $OutputPath"
-
-
-
