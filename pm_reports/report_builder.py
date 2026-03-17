@@ -390,6 +390,96 @@ def infer_budget_rag(issues: list[dict[str, Any]], epic_capacity_issues: list[di
     return "Green", "Current available effort data does not indicate a major budget-control issue."
 
 
+def infer_overall_rationale(overall_rag: str, timeline_rag: str, scope_rag: str, budget_rag: str) -> str:
+    if overall_rag == "Red":
+        return "Overall health is Red because combined delivery signals now indicate material execution risk that needs management attention."
+    amber_drivers = [label for label, value in [("timeline", timeline_rag), ("scope", scope_rag), ("budget", budget_rag)] if value == "Amber"]
+    if overall_rag == "Amber":
+        if amber_drivers:
+            return f"Overall health is Amber because the project remains controllable, but {', '.join(amber_drivers)} signals still need active management."
+        return "Overall health is Amber because delivery is under control, but execution signals still need active management."
+    return "Overall health is Green because current delivery signals stay broadly under control and no material execution breach is visible."
+
+
+def issue_is_done(issue: dict[str, Any]) -> bool:
+    status = str(issue.get("status", "")).lower()
+    return "done" in status or "closed" in status or "resolved" in status
+
+
+def issue_is_blocked(issue: dict[str, Any]) -> bool:
+    return "block" in str(issue.get("status", "")).lower()
+
+
+def issue_is_stale(issue: dict[str, Any], reference_now: datetime | None = None, days: int = 7) -> bool:
+    now = reference_now or datetime.now(timezone.utc)
+    updated = parse_iso_date(issue.get("updated"))
+    if not updated:
+        return False
+    if updated.tzinfo is None:
+        updated = updated.replace(tzinfo=timezone.utc)
+    return (now - updated).days >= days and not issue_is_done(issue)
+
+
+def build_weekly_change_lines(
+    current_issues: list[dict[str, Any]],
+    previous_issues: list[dict[str, Any]],
+    current_releases: list[dict[str, Any]],
+    previous_releases: list[dict[str, Any]],
+    newly_stale_issues: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    lines: list[str] = []
+
+    current_count = len(current_issues)
+    previous_count = len(previous_issues)
+    issue_delta = current_count - previous_count
+    issue_direction = "up" if issue_delta > 0 else "down" if issue_delta < 0 else "flat"
+    lines.append(
+        f"- Jira activity volume is {issue_direction}: {current_count} issues updated this week versus {previous_count} in the previous 7-day window."
+    )
+
+    current_closed = sum(1 for issue in current_issues if issue_is_done(issue))
+    previous_closed = sum(1 for issue in previous_issues if issue_is_done(issue))
+    closed_delta = current_closed - previous_closed
+    if closed_delta > 0:
+        lines.append(f"- Closure improved week over week: {current_closed} items reached done/closed this week versus {previous_closed} in the prior window.")
+    elif closed_delta < 0:
+        lines.append(f"- Closure slowed week over week: {current_closed} items reached done/closed this week versus {previous_closed} in the prior window.")
+    else:
+        lines.append(f"- Closure stayed stable: {current_closed} items reached done/closed in both weekly windows.")
+
+    current_blocked = {issue.get("key", "") for issue in current_issues if issue_is_blocked(issue)}
+    previous_blocked = {issue.get("key", "") for issue in previous_issues if issue_is_blocked(issue)}
+    new_blocked = sorted(key for key in current_blocked - previous_blocked if key)
+    resolved_blocked = sorted(key for key in previous_blocked - current_blocked if key)
+    if new_blocked:
+        lines.append(f"- New blocked signal this week: {', '.join(new_blocked[:5])}{'...' if len(new_blocked) > 5 else ''}.")
+    elif resolved_blocked:
+        lines.append(f"- Blocking pressure reduced: {', '.join(resolved_blocked[:5])}{'...' if len(resolved_blocked) > 5 else ''} are no longer in blocked status.")
+    else:
+        lines.append("- No week-over-week change in blocked-ticket signal was detected.")
+
+    stale_count = len(newly_stale_issues or [])
+    if stale_count > 0:
+        sample = ", ".join(issue.get("key", "?") for issue in (newly_stale_issues or [])[:5])
+        lines.append(f"- Aging risk increased: {stale_count} open items crossed the 7+ day stale threshold this week ({sample}{'...' if stale_count > 5 else ''}).")
+    else:
+        lines.append("- No additional open items crossed into 7+ day stale territory this week.")
+
+    current_active_releases = [r for r in current_releases if not r.get("released") and not r.get("archived")]
+    previous_active_releases = [r for r in previous_releases if not r.get("released") and not r.get("archived")]
+    if len(current_active_releases) > len(previous_active_releases):
+        lines.append(f"- Release pressure increased: {len(current_active_releases)} active Jira releases are now open versus {len(previous_active_releases)} a week ago.")
+    elif len(current_active_releases) < len(previous_active_releases):
+        lines.append(f"- Release pressure eased: {len(current_active_releases)} active Jira releases are now open versus {len(previous_active_releases)} a week ago.")
+    elif current_active_releases:
+        nearest = sorted(current_active_releases, key=lambda x: str(x.get('releaseDate') or '9999-12-31'))[0]
+        lines.append(f"- Release pipeline is broadly stable, with nearest active release still {nearest.get('name', 'Unknown')} ({nearest.get('releaseDate') or 'date not set'}).")
+    else:
+        lines.append("- No active Jira release is currently open.")
+
+    return lines
+
+
 def active_releases_headline(releases: list[dict[str, Any]], limit: int = 3, keywords: list[str] | None = None) -> str:
     active = [r for r in releases if not r.get("released") and not r.get("archived")]
     if keywords:
@@ -540,6 +630,9 @@ def build_report(
     contract_path: Path,
     report_config: dict[str, Any],
     epic_capacity_issues: list[dict[str, Any]] | None = None,
+    previous_period_issues: list[dict[str, Any]] | None = None,
+    previous_period_releases: list[dict[str, Any]] | None = None,
+    newly_stale_issues: list[dict[str, Any]] | None = None,
 ) -> str:
     rag = infer_rag(issues)
     now = date.today().isoformat()
@@ -612,11 +705,15 @@ def build_report(
         budget_rag, budget_rationale = infer_budget_rag(issues, epic_capacity_issues if epic_capacity_issues is not None else [])
 
         parts.append(section(get_section_title(report_settings, "key_details", "Key details"), "\n".join([
-            rag_status_line("Overall", rag, "Overall health is Amber because delivery is under control, but support and data-consistency load are materially consuming attention."),
+            rag_status_line("Overall", rag, infer_overall_rationale(rag, timeline_rag, scope_rag, budget_rag)),
             rag_status_line("Timeline", timeline_rag, timeline_rationale),
             rag_status_line("Scope", scope_rag, scope_rationale),
             rag_status_line("Budget", budget_rag, budget_rationale),
         ])))
+
+        if previous_period_issues is not None and previous_period_releases is not None:
+            change_lines = build_weekly_change_lines(issues, previous_period_issues, releases, previous_period_releases, newly_stale_issues)
+            parts.append(section(get_section_title(report_settings, "what_changed_since_last_week", "What changed since last week"), "\n".join(change_lines)))
 
         status_lines: list[str] = []
         for section_cfg in get_weekly_status_sections(report_settings):
@@ -694,14 +791,29 @@ def live_jira_dataset(report_type: str, project_key: str) -> dict[str, Any]:
     releases = fetch_releases(base_url, auth_header, project_key)
 
     epic_capacity_issues: list[dict[str, Any]] = []
+    previous_period_issues: list[dict[str, Any]] = []
+    previous_period_releases: list[dict[str, Any]] = []
+    newly_stale_issues: list[dict[str, Any]] = []
     if report_type == "weekly":
         epic_jql = (
             f"project = {project_key} AND issuetype = Epic AND status = Closed "
             "AND status CHANGED TO Closed AFTER -90d ORDER BY updated DESC"
         )
         epic_capacity_issues = fetch_issues(base_url, auth_header, epic_jql, field_ids, limit=250)
+        previous_jql = f"project = {project_key} AND updated >= -14d AND updated < -7d ORDER BY updated DESC"
+        previous_period_issues = fetch_issues(base_url, auth_header, previous_jql, field_ids, limit=250)
+        previous_period_releases = releases
+        newly_stale_jql = f"project = {project_key} AND statusCategory != Done AND updated >= -14d AND updated < -7d ORDER BY updated ASC"
+        newly_stale_issues = fetch_issues(base_url, auth_header, newly_stale_jql, field_ids, limit=250)
 
-    return {"issues": issues, "releases": releases, "epic_capacity_issues": epic_capacity_issues}
+    return {
+        "issues": issues,
+        "releases": releases,
+        "epic_capacity_issues": epic_capacity_issues,
+        "previous_period_issues": previous_period_issues,
+        "previous_period_releases": previous_period_releases,
+        "newly_stale_issues": newly_stale_issues,
+    }
 
 
 def main() -> int:
@@ -741,6 +853,9 @@ def main() -> int:
     issues = jira.get("issues", []) if isinstance(jira.get("issues"), list) else []
     releases = jira.get("releases", []) if isinstance(jira.get("releases"), list) else []
     epic_capacity_issues = jira.get("epic_capacity_issues", []) if isinstance(jira.get("epic_capacity_issues"), list) else []
+    previous_period_issues = jira.get("previous_period_issues", []) if isinstance(jira.get("previous_period_issues"), list) else []
+    previous_period_releases = jira.get("previous_period_releases", []) if isinstance(jira.get("previous_period_releases"), list) else []
+    newly_stale_issues = jira.get("newly_stale_issues", []) if isinstance(jira.get("newly_stale_issues"), list) else []
 
     report = build_report(
         report_type=args.report_type,
@@ -753,6 +868,9 @@ def main() -> int:
         contract_path=args.contract,
         report_config=project_config,
         epic_capacity_issues=epic_capacity_issues,
+        previous_period_issues=previous_period_issues,
+        previous_period_releases=previous_period_releases,
+        newly_stale_issues=newly_stale_issues,
     )
 
     args.output.parent.mkdir(parents=True, exist_ok=True)

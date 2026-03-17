@@ -58,6 +58,7 @@ DEFAULT_PROJECT_CONFIG = {
             "project_label": "Project",
             "section_titles": {
                 "key_details": "Key details",
+                "what_changed_since_last_week": "What changed since last week",
                 "current_project_status": "Current Project Status",
                 "project_next_steps": "Project Next Steps",
                 "client_signal": "Client signal",
